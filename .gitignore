@@ -26,10 +26,11 @@ Thumbs.db
 pip-log.txt
 pip-delete-this-directory.txt
 
-# MLflow tracking and artifacts
+# MLflow / Wandb tracking and artifacts
 mlruns/
 classification/mlruns/
 classification/checkpoints/
+classification/wandb/
 
 # Logs
 *.log
