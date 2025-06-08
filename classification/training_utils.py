@@ -51,11 +51,17 @@ class CustomClassifier(nn.Module):
         with torch.no_grad():
             x = self.encoder(dummy_input)
             x = self.head(x)
+            # If the encoder returns a 4D tensor (e.g., from a CNN), we need to flatten it
+            # (batch_size, channels * height * width)
+            if x.dim() > 2:
+                x = torch.flatten(x, 1) # Flatten the output except batch dimension
         return x.shape[1]
 
     def forward(self, x):
         x = self.encoder(x)
         x = self.head(x)
+        if x.dim() > 2:
+            x = torch.flatten(x, 1)
         return self.classifier(x)
 
 class EncoderFactory:
