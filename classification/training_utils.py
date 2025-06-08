@@ -123,6 +123,7 @@ class BaseEpoch:
     def run(self, data_loader, training=False):
         self.model.train() if training else self.model.eval()
         epoch_loss = 0
+        total_samples = 0
         all_preds = []
         all_labels = []
 
@@ -130,14 +131,14 @@ class BaseEpoch:
             with tqdm(total=len(data_loader), desc="Training" if training else "Validating", dynamic_ncols=True) as pbar:
                 for inputs, labels in data_loader:
                     inputs, labels = inputs.to(self.device), labels.to(self.device)
-
+                    batch_size = inputs.size(0)
                     if training:
                         self.optimizer.zero_grad()
 
                     outputs = self.model(inputs)
                     loss = self.loss_fn(outputs, labels)
-                    epoch_loss += loss.item()
-
+                    epoch_loss += loss.item() * batch_size
+                    total_samples += batch_size
                     if training:
                         loss.backward()
                         self.optimizer.step()
@@ -149,13 +150,15 @@ class BaseEpoch:
                     pbar.update(1)
                     pbar.set_postfix({"Loss": f"{loss.item():.4f}"})
 
-        return epoch_loss, all_preds, all_labels
+        mean_loss = epoch_loss / total_samples if total_samples > 0 else 0
+
+        return mean_loss, all_preds, all_labels
 
 
 
-def calculate_standard_metrics(preds, labels):
+def calculate_standard_metrics(preds, labels, average='macro'):
     acc = accuracy_score(labels, preds)
-    precision, recall, f1, _ = precision_recall_fscore_support(labels, preds, average='macro')
+    precision, recall, f1, _ = precision_recall_fscore_support(labels, preds, average=average)
     metrics = {
         'accuracy': acc,
         'precision': precision,

@@ -307,14 +307,19 @@ class TrainClassificationModel:
 
         with logger as run_logger:
             run_logger.log_params(logger_config_params)
+            assert isinstance(train_loader.dataset, ClassificationDataset)
+            unique_labels = set(train_loader.dataset.label_encoding.values())
+            average = 'binary' if len(unique_labels) == 2 else 'macro'
             for epoch in range(self.args.max_epochs):
                 train_loss, train_preds, train_labels = train_epoch.run(train_loader, training=True)
-                train_metrics = calculate_standard_metrics(train_preds, train_labels)
+                train_metrics = calculate_standard_metrics(train_preds, train_labels, average=average)
                 _display_metrics(train_metrics)
 
+                #Validation step
                 val_loss, val_preds, val_labels = val_epoch.run(val_loader, training=False)
-                val_metrics = calculate_standard_metrics(val_preds, val_labels)
+                val_metrics = calculate_standard_metrics(val_preds, val_labels, average=average)
                 _display_metrics(val_metrics)
+
                 scheduler.step(val_loss)
                 metrics_to_log = {
                     "train_f1": train_metrics["f1"],
@@ -343,7 +348,9 @@ class TrainClassificationModel:
             # Testing best model
             test_epoch = BaseEpoch(self.best_model, loss_function, device)
             test_loss, test_preds, test_labels = test_epoch.run(test_loader, training=False)
-            test_metrics = calculate_standard_metrics(test_preds, test_labels)
+            unique_test_labels = set(test_labels)
+            test_average = 'binary' if len(unique_test_labels) == 2 else 'macro'
+            test_metrics = calculate_standard_metrics(test_preds, test_labels, average=test_average)
             test_metrics_to_log = {
                 "test_f1": test_metrics["f1"],
                 "test_accuracy": test_metrics["accuracy"],
