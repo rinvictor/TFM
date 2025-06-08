@@ -1,3 +1,4 @@
+import logging
 import time
 from datetime import timedelta
 import argparse
@@ -12,8 +13,7 @@ from torchvision import transforms
 from classification.dataset import ClassificationDataset
 from classification.training_utils import CustomClassifier, EncoderFactory, OptimizerFactory, LossFunctionFactory, \
     BaseEpoch, calculate_standard_metrics, calculate_confusion_matrix, build_label_encoding
-import mlflow
-import mlflow.pytorch
+from logger_utils import get_logger
 
 OPTIMIZERS = ['adam', 'adamw', 'sgd']
 LOSSES = ['ce', 'bce']
@@ -29,7 +29,7 @@ class TrainClassificationModel:
         self.args = self.parser.parse_args()
         self.best_model = None
         self.best_model_metric = float('-inf')
-        self.best_model_path = f"checkpoints/checkpoints_{self.args.mlflow_experiment_name}_{self.args.run_name}_{self.args.encoder_name}"
+        self.best_model_path = f"checkpoints/checkpoints_{self.args.logger_experiment_name}_{self.args.run_name}_{self.args.encoder_name}"
 
     def add_argument(self, *args, **kw):
         if isinstance(args, tuple):
@@ -119,10 +119,10 @@ class TrainClassificationModel:
         )
 
         self.add_argument(
-            "--mlflow-experiment-name",
+            "--logger-experiment-name",
             type=str,
             required=True,
-            help="Name of the MLflow experiment to log the training run",
+            help="Name of the MLflow/Wandb experiment to log the training run",
         )
 
         self.add_argument(
@@ -139,6 +139,15 @@ class TrainClassificationModel:
             default="f1",
             choices=METRICS,
             help="Metric to select the best model during training",
+        )
+
+        self.add_argument(
+            "--logger",
+            type=str,
+            required=False,
+            default="mlflow",
+            choices=["mlflow", "wandb"],
+            help="Logger to use: mlflow or wandb",
         )
 
     def set_up_experiment(self):
@@ -268,10 +277,7 @@ class TrainClassificationModel:
         val_epoch = BaseEpoch(model, loss_function, device)
         metric_for_best_model = self.args.metric_for_best_model
 
-        # MLflow setup
-        mlflow.set_experiment(self.args.mlflow_experiment_name)
-        with mlflow.start_run(run_name=self.args.run_name):
-            mlflow.log_params({
+        logger_config_params = {
                 "num_classes": self.args.num_classes,
                 "initial_lr": self.args.initial_lr,
                 "loss_function": self.args.loss_function,
@@ -288,8 +294,19 @@ class TrainClassificationModel:
                 "train_transforms": _transform_to_str(train_loader.dataset.transform),
                 "val_transforms": _transform_to_str(val_loader.dataset.transform),
                 "test_transforms": _transform_to_str(test_loader.dataset.transform),
-            })
+            }
+        logger = get_logger(
+            logger_name=self.args.logger,
+            run_name=self.args.run_name,
+            logger_experiment_name=self.args.logger_experiment_name,
+            config=logger_config_params  # For WandbLogger, this will be used as config
+        )
+        if not logger:
+            logging.error("Logger initialization failed. Exiting training.")
+            raise ValueError("Logger initialization failed.")
 
+        with logger as run_logger:
+            run_logger.log_params(logger_config_params)
             for epoch in range(self.args.max_epochs):
                 train_loss, train_preds, train_labels = train_epoch.run(train_loader, training=True)
                 train_metrics = calculate_standard_metrics(train_preds, train_labels)
@@ -299,7 +316,7 @@ class TrainClassificationModel:
                 val_metrics = calculate_standard_metrics(val_preds, val_labels)
                 _display_metrics(val_metrics)
                 scheduler.step(val_loss)
-                mlflow.log_metrics({
+                metrics_to_log = {
                     "train_f1": train_metrics["f1"],
                     "val_f1": val_metrics["f1"],
                     "train_accuracy": train_metrics["accuracy"],
@@ -310,29 +327,32 @@ class TrainClassificationModel:
                     "val_recall": val_metrics["recall"],
                     "train_loss": train_loss,
                     "val_loss": val_loss,
-                }, step=epoch)
+                }
+                run_logger.log_metrics(metrics_to_log, step=epoch)
 
                 if val_metrics[metric_for_best_model] > self.best_model_metric:
                     self.best_model_metric = val_metrics[metric_for_best_model]
                     self.best_model = model
-                    mlflow.pytorch.log_model(model, "best_model") #todo añadir input_example
-                    epoch_path = os.path.join(self.best_model_path, f"best_model_epoch_{epoch}.pth")
-                    dir_path = os.path.dirname(epoch_path)
-                    if dir_path:
-                        os.makedirs(dir_path, exist_ok=True)
-                    torch.save(self.best_model, epoch_path)
+                    run_logger.log_model(
+                        model=self.best_model,
+                        model_name="best_model",
+                        model_path=self.best_model_path,
+                        epoch=epoch,
+                    )
 
             # Testing best model
             test_epoch = BaseEpoch(self.best_model, loss_function, device)
             test_loss, test_preds, test_labels = test_epoch.run(test_loader, training=False)
             test_metrics = calculate_standard_metrics(test_preds, test_labels)
-            mlflow.log_metrics({
+            test_metrics_to_log = {
                 "test_f1": test_metrics["f1"],
                 "test_accuracy": test_metrics["accuracy"],
                 "test_precision": test_metrics["precision"],
                 "test_recall": test_metrics["recall"],
                 "test_loss": test_loss,
-            })
+            }
+            run_logger.log_metrics(test_metrics_to_log)
+
             print("Test set results:")
             _display_metrics(test_metrics)
             cm = calculate_confusion_matrix(test_labels, test_preds)
