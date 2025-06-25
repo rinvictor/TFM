@@ -10,8 +10,8 @@ from torch.optim.lr_scheduler import ReduceLROnPlateau
 from torch.utils.data import DataLoader
 from torchvision import transforms
 
-from classification.dataset import ClassificationDataset
-from classification.training_utils import CustomClassifier, EncoderFactory, OptimizerFactory, LossFunctionFactory, \
+from dataset import ClassificationDataset
+from training_utils import CustomClassifier, EncoderFactory, OptimizerFactory, LossFunctionFactory, \
     BaseEpoch, calculate_standard_metrics, calculate_confusion_matrix, build_label_encoding
 from logger_utils import get_logger
 
@@ -150,6 +150,14 @@ class TrainClassificationModel:
             help="Logger to use: mlflow or wandb",
         )
 
+        self.add_argument(
+            "--max-workers",
+            type=int,
+            required=False,
+            default=12,
+            help="Maximum number of workers for data loading. Default is 16.",
+        )
+
     def set_up_experiment(self):
         #todo ver como gestiono lo de la softmax
         try:
@@ -236,17 +244,17 @@ class TrainClassificationModel:
         train_loader = DataLoader(dataset=train_dataset,
                                   batch_size=self.args.batch_size,
                                   shuffle=True,
-                                  num_workers=4,
+                                  num_workers=self.args.max_workers,
                                   drop_last=True)
         val_loader = DataLoader(dataset=val_dataset,
                                 batch_size=self.args.batch_size,
                                 shuffle=False,
-                                num_workers=4,
+                                num_workers=self.args.max_workers,
                                 drop_last=True)
         test_loader = DataLoader(dataset=test_dataset,
                                  batch_size=self.args.batch_size,
                                  shuffle=False,
-                                 num_workers=4,
+                                 num_workers=self.args.max_workers,
                                  drop_last=True)
 
         return train_loader, val_loader, test_loader
