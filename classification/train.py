@@ -7,12 +7,12 @@ import os
 import pandas as pd
 import torch
 from torch.optim.lr_scheduler import ReduceLROnPlateau
-from torch.utils.data import DataLoader
+from torch.utils.data import DataLoader, WeightedRandomSampler
 from torchvision import transforms
 
 from dataset import ClassificationDataset
 from training_utils import CustomClassifier, EncoderFactory, OptimizerFactory, LossFunctionFactory, \
-    BaseEpoch, calculate_standard_metrics, calculate_confusion_matrix, build_label_encoding
+    BaseEpoch, calculate_standard_metrics, calculate_confusion_matrix, build_label_encoding, set_seed
 from logger_utils import get_logger
 
 OPTIMIZERS = ['adam', 'adamw', 'sgd']
@@ -158,11 +158,33 @@ class TrainClassificationModel:
             help="Maximum number of workers for data loading. Default is 16.",
         )
 
+        self.add_argument(
+            '--use-weighted-sampling',
+            action='store_true',
+            help='If set, uses weighted sampling to handle class imbalance during training. '
+        )
+
+        self.add_argument(
+            '--seed',
+            type=int,
+            required=False,
+            default=42,
+            help="Random seed for reproducibility.",
+        )
+
+        self.add_argument(
+            '--dropout-rate',
+            type=float,
+            required=False,
+            default=0,
+            help="Dropout rate for the model. Default is 0 (no dropout).",
+        )
+
     def set_up_experiment(self):
         #todo ver como gestiono lo de la softmax
         try:
             encoder = EncoderFactory().get_encoder(self.args.encoder_name, pretrained=self.args.pretrained) #todo lo de pretained tiene que ser opcional
-            model = CustomClassifier(encoder=encoder, num_classes=self.args.num_classes)
+            model = CustomClassifier(encoder=encoder, num_classes=self.args.num_classes, dropout_rate=self.args.dropout_rate)
         except Exception as error:
             print(f"Something failed creating the model: {error}")
             return False
@@ -174,7 +196,7 @@ class TrainClassificationModel:
             return False
 
         try:
-            loss_function = LossFunctionFactory().get_loss_function(self.args.loss_function)
+            loss_function = LossFunctionFactory().get_loss_function(self.args.loss_function, weight=None) #todo
         except Exception as error:
             print(f"Something failed getting the loss function: {error}")
             return False
@@ -193,6 +215,25 @@ class TrainClassificationModel:
 
     def set_up_dataset_loader(self):
         df_train = pd.read_csv(os.path.join(self.args.dataset_path, 'train.csv'))
+        if self.args.use_weighted_sampling:
+            print("Using WeightedRandomSampler for class imbalance handling.")
+            # Calculate class weights
+            class_counts = df_train['label'].value_counts()
+            class_weights_dict = {
+                label: 1.0 / count if count > 0 else 0.0
+                for label, count in class_counts.items()
+            }
+            print("Inverse class weights:", class_weights_dict)
+            labels_for_weight_lookup = df_train['label'].tolist()
+            sample_weights = torch.tensor([class_weights_dict[label] for label in labels_for_weight_lookup], dtype=torch.double)
+            sampler = WeightedRandomSampler(
+                weights= sample_weights,
+                num_samples=len(sample_weights),
+                replacement=True
+            )
+        else:
+            sampler = None
+
         train_images_with_labels = list(zip(df_train['image_path'], df_train['label']))
         class_to_idx_train = build_label_encoding(df_train['label'])
 
@@ -209,8 +250,21 @@ class TrainClassificationModel:
 
         def get_train_transform(image_size=(224, 224)):
             return transforms.Compose([
-                transforms.RandomResizedCrop(image_size, scale=(0.8, 1.0), ratio=(0.75, 1.33)),
-                transforms.RandomHorizontalFlip(),
+                transforms.RandomAffine(
+                    degrees=30,
+                    translate=(0.1, 0.1),
+                    scale=(0.9, 1.2),
+                    shear=10
+                ),
+                transforms.RandomHorizontalFlip(p=0.5),
+                transforms.RandomVerticalFlip(p=0.5),
+                transforms.ColorJitter(
+                    brightness=0.1,
+                    contrast=0.1,
+                    saturation=0.1,
+                    hue=0
+                ),
+                transforms.CenterCrop(image_size),  # Ensure the image center
                 transforms.ToTensor(),
                 transforms.Normalize(mean=[0.485, 0.456, 0.406],
                                      std=[0.229, 0.224, 0.225]),
@@ -243,9 +297,10 @@ class TrainClassificationModel:
 
         train_loader = DataLoader(dataset=train_dataset,
                                   batch_size=self.args.batch_size,
-                                  shuffle=True,
+                                  shuffle=True if not self.args.use_weighted_sampling else False,
                                   num_workers=self.args.max_workers,
-                                  drop_last=True)
+                                  drop_last=True,
+                                  sampler=sampler)
         val_loader = DataLoader(dataset=val_dataset,
                                 batch_size=self.args.batch_size,
                                 shuffle=False,
@@ -260,12 +315,33 @@ class TrainClassificationModel:
         return train_loader, val_loader, test_loader
 
     def train_classification_model(self):
-        def _display_metrics(metrics):
-            print(f"\nEpoch {epoch + 1}/{self.args.max_epochs} | "
+        def _display_metrics(metrics, split: str = "train"):
+            print(f"\n📊 {split.upper()} GLOBAL METRICS\n"
+                  f"Epoch {epoch + 1}/{self.args.max_epochs} | "
                   f"F1 Score: {metrics['f1']:.4f} | "
                   f"Accuracy: {metrics['accuracy']:.4f} | "
                   f"Precision: {metrics['precision']:.4f} | "
                   f"Recall: {metrics['recall']:.4f}")
+
+        def _display_metrics_per_class(metrics: dict, split: str = "train"):
+            print(f"\n📊 {split.upper()} METRICS PER CLASS")
+            class_metrics = {}
+
+            for k, v in metrics.items():
+                if k == "accuracy":
+                    continue
+                if k.startswith("class_"):
+                    parts = k.split("_", 2)
+                    class_name = parts[1]
+                    metric_name = parts[2]
+                    class_metrics.setdefault(class_name, {})[metric_name] = v
+
+            for class_name in sorted(class_metrics.keys()):
+                m = class_metrics[class_name]
+                print(f"  🏷️  Class '{class_name}': "
+                      f"Precision: {m.get('precision', 0):.4f} | "
+                      f"Recall: {m.get('recall', 0):.4f} | "
+                      f"F1: {m.get('f1', 0):.4f}")
 
         def _transform_to_str(transform):
             # Try to get a readable string for the transform pipeline
@@ -273,6 +349,8 @@ class TrainClassificationModel:
                 return repr(transform)
             return str(transform)
 
+        # For reproducibility
+        set_seed(self.args.seed)
         model, optimizer, loss_function, scheduler = self.set_up_experiment()
         device = torch.device("cuda") if torch.cuda.is_available() else "cpu"
         model = model.to(device)
@@ -316,31 +394,40 @@ class TrainClassificationModel:
         with logger as run_logger:
             run_logger.log_params(logger_config_params)
             assert isinstance(train_loader.dataset, ClassificationDataset)
-            unique_labels = set(train_loader.dataset.label_encoding.values())
-            average = 'binary' if len(unique_labels) == 2 else 'macro'
+            average = 'macro' # The objetive is to calculate the metrics globally, so we use macro
+            idx_to_class = {v: k for k, v in train_loader.dataset.label_encoding.items()}
             for epoch in range(self.args.max_epochs):
                 train_loss, train_preds, train_labels = train_epoch.run(train_loader, training=True)
+                # Global metrics calculation
                 train_metrics = calculate_standard_metrics(train_preds, train_labels, average=average)
-                _display_metrics(train_metrics)
+                train_metrics_per_class = calculate_standard_metrics(train_preds, train_labels,
+                                                                     average=None, idx_to_class=idx_to_class)
+                _display_metrics(train_metrics, split="train")
+                _display_metrics_per_class(train_metrics_per_class, split="train")
 
                 #Validation step
                 val_loss, val_preds, val_labels = val_epoch.run(val_loader, training=False)
                 val_metrics = calculate_standard_metrics(val_preds, val_labels, average=average)
-                _display_metrics(val_metrics)
+                val_metrics_per_class = calculate_standard_metrics(val_preds, val_labels,
+                                                                   average=None, idx_to_class=idx_to_class)
+                _display_metrics(val_metrics, split="val")
+                _display_metrics_per_class(val_metrics_per_class, split="val")
 
                 scheduler.step(val_loss)
                 metrics_to_log = {
-                    "train_f1": train_metrics["f1"],
-                    "val_f1": val_metrics["f1"],
-                    "train_accuracy": train_metrics["accuracy"],
-                    "val_accuracy": val_metrics["accuracy"],
-                    "train_precision": train_metrics["precision"],
-                    "val_precision": val_metrics["precision"],
-                    "train_recall": train_metrics["recall"],
-                    "val_recall": val_metrics["recall"],
+                    "train_f1_global": train_metrics["f1"],
+                    "val_f1_global": val_metrics["f1"],
+                    "train_accuracy_global": train_metrics["accuracy"],
+                    "val_accuracy_global": val_metrics["accuracy"],
+                    "train_precision_global": train_metrics["precision"],
+                    "val_precision_global": val_metrics["precision"],
+                    "train_recall_global": train_metrics["recall"],
+                    "val_recall_global": val_metrics["recall"],
                     "train_loss": train_loss,
                     "val_loss": val_loss,
                 }
+                metrics_to_log.update({f"train_{k}": v for k, v in train_metrics_per_class.items() if k != "accuracy"})
+                metrics_to_log.update({f"val_{k}": v for k, v in val_metrics_per_class.items() if k != "accuracy"})
                 run_logger.log_metrics(metrics_to_log, step=epoch)
 
                 if val_metrics[metric_for_best_model] > self.best_model_metric:
@@ -356,20 +443,24 @@ class TrainClassificationModel:
             # Testing best model
             test_epoch = BaseEpoch(self.best_model, loss_function, device)
             test_loss, test_preds, test_labels = test_epoch.run(test_loader, training=False)
-            unique_test_labels = set(test_labels)
-            test_average = 'binary' if len(unique_test_labels) == 2 else 'macro'
-            test_metrics = calculate_standard_metrics(test_preds, test_labels, average=test_average)
+
+            test_metrics = calculate_standard_metrics(test_preds, test_labels, average='macro')
+            test_metrics_per_class = calculate_standard_metrics(test_preds, test_labels,
+                                                                average=None, idx_to_class=idx_to_class)
             test_metrics_to_log = {
-                "test_f1": test_metrics["f1"],
-                "test_accuracy": test_metrics["accuracy"],
-                "test_precision": test_metrics["precision"],
-                "test_recall": test_metrics["recall"],
-                "test_loss": test_loss,
+                "test_f1_global": test_metrics["f1"],
+                "test_accuracy_global": test_metrics["accuracy"],
+                "test_precision_global": test_metrics["precision"],
+                "test_recall_global": test_metrics["recall"],
+                "test_loss_global": test_loss,
             }
+            test_metrics_to_log.update({f"test_{k}": v for k, v in test_metrics_per_class.items() if k != "accuracy"})
             run_logger.log_metrics(test_metrics_to_log)
 
             print("Test set results:")
-            _display_metrics(test_metrics)
+            _display_metrics(test_metrics, split="test")
+            _display_metrics_per_class(test_metrics_per_class, split="test")
+
             cm = calculate_confusion_matrix(test_labels, test_preds)
             print('Confusion Matrix:')
             print(cm)

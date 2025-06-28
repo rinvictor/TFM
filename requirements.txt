@@ -117,3 +117,4 @@ wrapt==1.17.2
 xxhash==3.5.0
 yarl==1.18.3
 zipp==3.22.0
+imbalanced-learn==0.13.0
