@@ -8,8 +8,8 @@ import pandas as pd
 import torch
 from torch.optim.lr_scheduler import ReduceLROnPlateau
 from torch.utils.data import DataLoader, WeightedRandomSampler
-from torchvision import transforms
 
+from transformations import get_train_transform, get_val_transform
 from dataset import ClassificationDataset
 from training_utils import CustomClassifier, EncoderFactory, OptimizerFactory, LossFunctionFactory, \
     BaseEpoch, calculate_standard_metrics, calculate_confusion_matrix, build_label_encoding, set_seed
@@ -33,6 +33,8 @@ class TrainClassificationModel:
         self.best_model_metric = float('-inf')
         self.best_model_path = f"checkpoints/checkpoints_{self.args.logger_experiment_name}_{self.args.run_name}_{self.args.encoder_name}"
         self.class_weights = None
+        self.early_stopping_patience = self.args.early_stopping_patience
+        self.epochs_without_improvement = 0
 
     def add_argument(self, *args, **kw):
         if isinstance(args, tuple):
@@ -189,6 +191,23 @@ class TrainClassificationModel:
             help="Dropout rate for the model. Default is 0 (no dropout).",
         )
 
+        self.add_argument(
+            '--early-stopping-patience',
+            type=int,
+            required=False,
+            default=None,
+            help='Number of epochs to wait for improvement before stopping.'
+        )
+
+        self.add_argument(
+            '--dataset-downsampling-fraction',
+            type=float,
+            required=False,
+            default=None,
+            help='If set, the train dataset will be downsampled to this fraction. '
+                 'Useful for large training datasets to speed up training.'
+        )
+
     def set_up_experiment(self):
         #todo ver como gestiono lo de la softmax
         try:
@@ -224,6 +243,18 @@ class TrainClassificationModel:
 
     def set_up_dataset_loader(self):
         df_train = pd.read_csv(os.path.join(self.args.dataset_path, 'train.csv'))
+        if self.args.downsampling_fraction is not None:
+            original_size = len(df_train)
+            df_train_downsampled = df_train.groupby('label', group_keys=False).apply(
+                lambda x: x.sample(frac=self.args.downsampling_fraction,
+                                   random_state=self.args.seed)
+            )
+            df_train = df_train_downsampled
+            new_size = len(df_train)
+            print(f"Downsampling the training dataset to "
+                  f"{self.args.downsampling_fraction * 100}% of its original size. "
+                  f"New size: {new_size} samples (from {original_size} samples).")
+
         if self.args.use_class_weights:
             print("Calculating class weights for the loss function.")
             train_labels = df_train['label'].to_numpy()
@@ -267,37 +298,6 @@ class TrainClassificationModel:
 
         if not (class_to_idx_train == class_to_idx_val == class_to_idx_test):
             raise ValueError("Label encoding mismatch between train, val, and test splits!")
-
-        def get_train_transform(image_size=(224, 224)):
-            return transforms.Compose([
-                transforms.RandomAffine(
-                    degrees=30,
-                    translate=(0.1, 0.1),
-                    scale=(0.9, 1.2),
-                    shear=10
-                ),
-                transforms.RandomHorizontalFlip(p=0.5),
-                transforms.RandomVerticalFlip(p=0.5),
-                transforms.ColorJitter(
-                    brightness=0.1,
-                    contrast=0.1,
-                    saturation=0.1,
-                    hue=0
-                ),
-                transforms.CenterCrop(image_size),  # Ensure the image center
-                transforms.ToTensor(),
-                transforms.Normalize(mean=[0.485, 0.456, 0.406],
-                                     std=[0.229, 0.224, 0.225]),
-            ])
-
-        def get_val_transform(image_size=(224, 224)):
-            return transforms.Compose([
-                transforms.Resize(256),
-                transforms.CenterCrop(image_size),
-                transforms.ToTensor(),
-                transforms.Normalize(mean=[0.485, 0.456, 0.406],
-                                     std=[0.229, 0.224, 0.225]),
-            ])
 
         train_dataset = ClassificationDataset(
             images_with_labels = train_images_with_labels,
@@ -452,6 +452,7 @@ class TrainClassificationModel:
 
                 if val_metrics[metric_for_best_model] > self.best_model_metric:
                     self.best_model_metric = val_metrics[metric_for_best_model]
+                    self.epochs_without_improvement = 0
                     self.best_model = model
                     run_logger.log_model(
                         model=self.best_model,
@@ -459,6 +460,12 @@ class TrainClassificationModel:
                         model_path=self.best_model_path,
                         epoch=epoch,
                     )
+                else:
+                    self.epochs_without_improvement += 1
+
+                if self.early_stopping_patience is not None and self.epochs_without_improvement >= self.early_stopping_patience:
+                    print(f"Early stopping triggered after {self.epochs_without_improvement} epochs without improvement.")
+                    run_logger.log_metrics({"early_stopping_triggered": True}, step=epoch)
 
             # Testing best model
             test_epoch = BaseEpoch(self.best_model, loss_function, device)
