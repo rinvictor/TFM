@@ -205,7 +205,7 @@ class TrainClassificationModel:
             required=False,
             default=None,
             help='If set, the train dataset will be downsampled to this fraction. '
-                 'Useful for large training datasets to speed up training.'
+                 'Useful for large training datasets, to speed up training.'
         )
 
     def set_up_experiment(self):
@@ -243,16 +243,16 @@ class TrainClassificationModel:
 
     def set_up_dataset_loader(self):
         df_train = pd.read_csv(os.path.join(self.args.dataset_path, 'train.csv'))
-        if self.args.downsampling_fraction is not None:
+        if self.args.dataset_downsampling_fraction is not None:
             original_size = len(df_train)
             df_train_downsampled = df_train.groupby('label', group_keys=False).apply(
-                lambda x: x.sample(frac=self.args.downsampling_fraction,
+                lambda x: x.sample(frac=self.args.dataset_downsampling_fraction,
                                    random_state=self.args.seed)
             )
             df_train = df_train_downsampled
             new_size = len(df_train)
             print(f"Downsampling the training dataset to "
-                  f"{self.args.downsampling_fraction * 100}% of its original size. "
+                  f"{self.args.dataset_downsampling_fraction * 100}% of its original size. "
                   f"New size: {new_size} samples (from {original_size} samples).")
 
         if self.args.use_class_weights:
