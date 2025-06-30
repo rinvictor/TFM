@@ -14,6 +14,8 @@ from dataset import ClassificationDataset
 from training_utils import CustomClassifier, EncoderFactory, OptimizerFactory, LossFunctionFactory, \
     BaseEpoch, calculate_standard_metrics, calculate_confusion_matrix, build_label_encoding, set_seed
 from logger_utils import get_logger
+from sklearn.utils.class_weight import compute_class_weight
+import numpy as np
 
 OPTIMIZERS = ['adam', 'adamw', 'sgd']
 LOSSES = ['ce', 'bce']
@@ -30,6 +32,7 @@ class TrainClassificationModel:
         self.best_model = None
         self.best_model_metric = float('-inf')
         self.best_model_path = f"checkpoints/checkpoints_{self.args.logger_experiment_name}_{self.args.run_name}_{self.args.encoder_name}"
+        self.class_weights = None
 
     def add_argument(self, *args, **kw):
         if isinstance(args, tuple):
@@ -165,6 +168,12 @@ class TrainClassificationModel:
         )
 
         self.add_argument(
+            '--use-class-weights',
+            action='store_true',
+            help='If set, uses class weights in the loss function to handle class imbalance.'
+        )
+
+        self.add_argument(
             '--seed',
             type=int,
             required=False,
@@ -196,7 +205,7 @@ class TrainClassificationModel:
             return False
 
         try:
-            loss_function = LossFunctionFactory().get_loss_function(self.args.loss_function, weight=None) #todo
+            loss_function = LossFunctionFactory().get_loss_function(self.args.loss_function, weight=self.class_weights)
         except Exception as error:
             print(f"Something failed getting the loss function: {error}")
             return False
@@ -215,6 +224,17 @@ class TrainClassificationModel:
 
     def set_up_dataset_loader(self):
         df_train = pd.read_csv(os.path.join(self.args.dataset_path, 'train.csv'))
+        if self.args.use_class_weights:
+            print("Calculating class weights for the loss function.")
+            train_labels = df_train['label'].to_numpy()
+            classes = np.unique(train_labels)
+            weights = compute_class_weight(
+                class_weight='balanced',
+                classes=classes,
+                y=train_labels
+            )
+            self.class_weights = torch.tensor(weights, dtype=torch.float32)
+            print(f"Calculated class weights: {self.class_weights}")
         if self.args.use_weighted_sampling:
             print("Using WeightedRandomSampler for class imbalance handling.")
             # Calculate class weights
