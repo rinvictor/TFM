@@ -251,7 +251,7 @@ class TrainClassificationModel:
             df_train_downsampled = df_train.groupby('label', group_keys=False).apply(
                 lambda x: x.sample(frac=self.args.dataset_downsampling_fraction,
                                    random_state=self.args.seed),
-                include_groups=False
+                include_groups=True
             )
             df_train = df_train_downsampled
             new_size = len(df_train)
