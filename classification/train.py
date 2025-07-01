@@ -16,10 +16,12 @@ from training_utils import CustomClassifier, EncoderFactory, OptimizerFactory, L
 from logger_utils import get_logger
 from sklearn.utils.class_weight import compute_class_weight
 import numpy as np
+from general_utils import parse_bracketed_arg
 
 OPTIMIZERS = ['adam', 'adamw', 'sgd']
-LOSSES = ['ce', 'bce']
+LOSSES = ['ce', 'focal']
 METRICS = ['f1', 'accuracy', 'precision', 'recall']
+
 
 class TrainClassificationModel:
     def __init__(self):
@@ -63,7 +65,6 @@ class TrainClassificationModel:
             "--loss-function",
             type=str,
             required=True,
-            choices=LOSSES,
             help=f"Loss function name. Allowed values: {' ,'.join(LOSSES)}",
         )
         self.add_argument(
@@ -224,7 +225,9 @@ class TrainClassificationModel:
             return False
 
         try:
-            loss_function = LossFunctionFactory().get_loss_function(self.args.loss_function, weight=self.class_weights)
+            loss_name, loss_config = parse_bracketed_arg(self.args.loss_function)
+            print(f"Using loss function: {loss_name} with config: {loss_config}")
+            loss_function = LossFunctionFactory().get_loss_function(loss_name, weight=self.class_weights, **loss_config)
         except Exception as error:
             print(f"Something failed getting the loss function: {error}")
             return False
@@ -247,7 +250,8 @@ class TrainClassificationModel:
             original_size = len(df_train)
             df_train_downsampled = df_train.groupby('label', group_keys=False).apply(
                 lambda x: x.sample(frac=self.args.dataset_downsampling_fraction,
-                                   random_state=self.args.seed)
+                                   random_state=self.args.seed),
+                include_groups=False
             )
             df_train = df_train_downsampled
             new_size = len(df_train)
@@ -387,6 +391,7 @@ class TrainClassificationModel:
                 "num_classes": self.args.num_classes,
                 "initial_lr": self.args.initial_lr,
                 "loss_function": self.args.loss_function,
+                "loss_config": str(parse_bracketed_arg(self.args.loss_function)[1]),
                 "batch_size": self.args.batch_size,
                 "max_epochs": self.args.max_epochs,
                 "encoder_name": self.args.encoder_name,
@@ -400,6 +405,8 @@ class TrainClassificationModel:
                 "train_transforms": _transform_to_str(train_loader.dataset.transform),
                 "val_transforms": _transform_to_str(val_loader.dataset.transform),
                 "test_transforms": _transform_to_str(test_loader.dataset.transform),
+                "use_weighted_sampling": self.args.use_weighted_sampling,
+                "dataset_downsampling_fraction": self.args.dataset_downsampling_fraction,
             }
         logger = get_logger(
             logger_name=self.args.logger,
@@ -434,6 +441,9 @@ class TrainClassificationModel:
                 _display_metrics_per_class(val_metrics_per_class, split="val")
 
                 scheduler.step(val_loss)
+                current_learning_rate = optimizer.param_groups[0]['lr']
+                print("Current learning rate:", current_learning_rate)
+
                 metrics_to_log = {
                     "train_f1_global": train_metrics["f1"],
                     "val_f1_global": val_metrics["f1"],
@@ -445,6 +455,7 @@ class TrainClassificationModel:
                     "val_recall_global": val_metrics["recall"],
                     "train_loss": train_loss,
                     "val_loss": val_loss,
+                    "learning_rate": current_learning_rate,
                 }
                 metrics_to_log.update({f"train_{k}": v for k, v in train_metrics_per_class.items() if k != "accuracy"})
                 metrics_to_log.update({f"val_{k}": v for k, v in val_metrics_per_class.items() if k != "accuracy"})

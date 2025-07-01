@@ -7,6 +7,7 @@ import torch
 from tqdm import tqdm
 import numpy as np
 import random
+from segmentation_models_pytorch.losses import FocalLoss
 
 class OptimizerFactory:
     def get_optimizer(self, optimizer_name: str, model_params, initial_lr, **config):
@@ -33,36 +34,18 @@ class LossFunctionFactory:
     def get_loss_function(self, loss_name, **kwargs):
         if loss_name == "ce":
             return _get_ce(**kwargs)
+        elif loss_name == 'focal':
+            if 'weight' in kwargs:
+                del kwargs['weight']  # Focal loss does not support weight
+            return _get_focal(**kwargs)
         else:
             raise NotImplementedError(f"{loss_name} loss is not implemented")
 
 def _get_ce(**kwargs):
     return CrossEntropyLoss(**kwargs)
 
-# class CustomClassifier(nn.Module):
-#     def __init__(self, encoder, num_classes, head=None):
-#         super(CustomClassifier, self).__init__()
-#         self.encoder = encoder
-#         self.head = head if head else nn.Identity()  #Only if head is present
-#         self.classifier = nn.Linear(self._get_output_features(),num_classes)
-#     def _get_output_features(self):
-#         # Pasa un dummy input por el encoder + head para obtener el tamaño de salida
-#         dummy_input = torch.randn(1, 3, 224, 224)
-#         with torch.no_grad():
-#             x = self.encoder(dummy_input)
-#             x = self.head(x)
-#             # If the encoder returns a 4D tensor (e.g., from a CNN), we need to flatten it
-#             # (batch_size, channels * height * width)
-#             if x.dim() > 2:
-#                 x = torch.flatten(x, 1) # Flatten the output except batch dimension
-#         return x.shape[1]
-#
-#     def forward(self, x):
-#         x = self.encoder(x)
-#         x = self.head(x)
-#         if x.dim() > 2:
-#             x = torch.flatten(x, 1)
-#         return self.classifier(x)
+def _get_focal(**kwargs):
+    return FocalLoss(mode='multiclass', **kwargs)
 
 class CustomClassifier(nn.Module):
     def __init__(self, encoder, num_classes, dropout_rate=0):
