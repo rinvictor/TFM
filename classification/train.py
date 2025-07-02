@@ -477,6 +477,7 @@ class TrainClassificationModel:
                 if self.early_stopping_patience is not None and self.epochs_without_improvement >= self.early_stopping_patience:
                     print(f"Early stopping triggered after {self.epochs_without_improvement} epochs without improvement.")
                     run_logger.log_metrics({"early_stopping_triggered": True}, step=epoch)
+                    break
 
             # Testing best model
             test_epoch = BaseEpoch(self.best_model, loss_function, device)
