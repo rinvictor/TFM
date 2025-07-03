@@ -54,7 +54,7 @@ class ContrastiveTrainer:
         self.projection_head = projection_head
         self.optimizer = optimizer
         self.device = device
-        self.criterion = SupConLoss()
+        self.criterion = SupConLoss(temperature=0.15)
 
     def train(self, epochs=20, log_path="contrastive_train_log.csv"):
         self.encoder.train()

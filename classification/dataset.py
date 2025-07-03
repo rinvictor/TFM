@@ -35,14 +35,14 @@ def get_contrastive_loader(dataset, batch_size=64, num_workers=4, augment=True):
     Devuelve un DataLoader para entrenamiento contrastivo, con oversampling opcional y augmentaciones fuertes.
     """
     # Recomendado: augmentaciones fuertes solo para contrastive
+    import torchvision.transforms as T
     if augment:
-        dataset.transform = transforms.Compose([
-            transforms.RandomResizedCrop(224),
-            transforms.RandomHorizontalFlip(),
-            transforms.ColorJitter(0.4, 0.4, 0.4, 0.1),
-            transforms.RandomGrayscale(p=0.2),
-            transforms.ToTensor()
-        ])
+        dataset.transform = T.Compose([
+    T.RandomResizedCrop(224),
+    T.RandomHorizontalFlip(),
+    T.AutoAugment(policy=T.AutoAugmentPolicy.IMAGENET),
+    T.ToTensor()
+])
 
     # Estimamos pesos para sampler en función de clases
     labels = [label for _, label in dataset.samples]

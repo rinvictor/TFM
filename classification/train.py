@@ -221,7 +221,7 @@ class TrainClassificationModel:
         in_dim=encoder.fc.in_features
         encoder.fc = torch.nn.Identity()
         projection_head = ProjectionHead(in_dim=in_dim).to(device) # todo harcodeado para resnet
-        optimizer = optim.Adam(list(encoder.parameters()) + list(projection_head.parameters()), lr=3e-4) #todo pueden ser otros valores?? otro optimizador?
+        optimizer = optim.Adam(list(encoder.parameters()) + list(projection_head.parameters()), lr=1e-4) #todo pueden ser otros valores?? otro optimizador?
 
         print("Starting contrastive pretraining...")
         trainer = ContrastiveTrainer(encoder, dataloader, projection_head, optimizer, device)
@@ -332,6 +332,15 @@ class TrainClassificationModel:
         df_test = pd.read_csv(os.path.join(self.args.dataset_path, 'test.csv'))
         test_images_with_labels = list(zip(df_test['image_path'], df_test['label']))
         class_to_idx_test = build_label_encoding(df_test['label'])
+
+        print(f"\nTrain set - Total: {len(df_train)}")
+        print(df_train['label'].value_counts())
+
+        print(f"\nVal set - Total: {len(df_val)}")
+        print(df_val['label'].value_counts())
+
+        print(f"\nTest set - Total: {len(df_test)}")
+        print(df_test['label'].value_counts())
 
         if not (class_to_idx_train == class_to_idx_val == class_to_idx_test):
             raise ValueError("Label encoding mismatch between train, val, and test splits!")
@@ -458,6 +467,8 @@ class TrainClassificationModel:
             average = 'macro' # The objetive is to calculate the metrics globally, so we use macro
             idx_to_class = {v: k for k, v in train_loader.dataset.label_encoding.items()}
             for epoch in range(self.args.max_epochs):
+                self.best_model = model
+                continue
                 train_loss, train_preds, train_labels = train_epoch.run(train_loader, training=True)
                 # Global metrics calculation
                 train_metrics = calculate_standard_metrics(train_preds, train_labels, average=average)
