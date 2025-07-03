@@ -87,4 +87,4 @@ class ContrastiveTrainer:
                 print(f"Epoch {epoch + 1}/{epochs}, Average loss: {avg_loss}")
                 writer.writerow([epoch + 1, avg_loss])
                 print(f"Contrastive Epoch {epoch + 1}, Loss: {avg_loss:.4f}")
-                self.scheduler.step()
+                # self.scheduler.step()
