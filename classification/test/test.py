@@ -51,7 +51,7 @@ def main():
     criterion = nn.BCEWithLogitsLoss()
     optimizer = optim.Adam(model.parameters(), lr=1e-4)
 
-    num_epochs = 5
+    num_epochs = 20
     for epoch in range(num_epochs):
         # Entrenamiento
         model.train()
