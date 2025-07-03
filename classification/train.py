@@ -238,7 +238,7 @@ class TrainClassificationModel:
         if self.args.contrastive_pretrain:
             device = torch.device("cuda") if torch.cuda.is_available() else "cpu"
             contrastive_loader = get_contrastive_loader(train_dataset, batch_size=64, num_workers=self.args.max_workers, augment=True)
-            self.contrastive_pretrain(encoder, contrastive_loader, device, epochs=30) #todo cosas harcodeadas
+            self.contrastive_pretrain(encoder, contrastive_loader, device, epochs=60) #todo cosas harcodeadas
         #Carga pesos preentrenados si existen
         if os.path.exists("encoder_contrastive.pth"):
             encoder.load_state_dict(torch.load("encoder_contrastive.pth"))

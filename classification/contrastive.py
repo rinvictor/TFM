@@ -1,6 +1,7 @@
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+from torch.optim.lr_scheduler import CosineAnnealingLR
 from tqdm import tqdm
 import csv
 
@@ -54,7 +55,8 @@ class ContrastiveTrainer:
         self.projection_head = projection_head
         self.optimizer = optimizer
         self.device = device
-        self.criterion = SupConLoss(temperature=0.15)
+        self.criterion = SupConLoss(temperature=0.01)
+        self.scheduler = CosineAnnealingLR(optimizer, T_max=60)
 
     def train(self, epochs=20, log_path="contrastive_train_log.csv"):
         self.encoder.train()
@@ -85,3 +87,4 @@ class ContrastiveTrainer:
                 print(f"Epoch {epoch + 1}/{epochs}, Average loss: {avg_loss}")
                 writer.writerow([epoch + 1, avg_loss])
                 print(f"Contrastive Epoch {epoch + 1}, Loss: {avg_loss:.4f}")
+                self.scheduler.step()
