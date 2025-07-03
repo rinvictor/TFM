@@ -2,6 +2,9 @@ from torch.utils.data import Dataset
 import cv2
 from PIL import Image
 from typing import Optional, Callable
+from torchvision import transforms
+from collections import Counter
+from torch.utils.data import DataLoader, WeightedRandomSampler
 
 class ClassificationDataset(Dataset):
     def __init__(self, images_with_labels, transform: Optional[Callable] = None, label_encoding=None):
@@ -25,5 +28,36 @@ class ClassificationDataset(Dataset):
 
     def __len__(self):
         return len(self.samples) # todo habra que multiplicar por el numero de augmentaciones
+
+
+def get_contrastive_loader(dataset, batch_size=64, num_workers=4, augment=True):
+    """
+    Devuelve un DataLoader para entrenamiento contrastivo, con oversampling opcional y augmentaciones fuertes.
+    """
+    # Recomendado: augmentaciones fuertes solo para contrastive
+    if augment:
+        dataset.transform = transforms.Compose([
+            transforms.RandomResizedCrop(224),
+            transforms.RandomHorizontalFlip(),
+            transforms.ColorJitter(0.4, 0.4, 0.4, 0.1),
+            transforms.RandomGrayscale(p=0.2),
+            transforms.ToTensor()
+        ])
+
+    # Estimamos pesos para sampler en función de clases
+    labels = [label for _, label in dataset.samples]
+    class_counts = Counter(labels)
+    num_samples = len(labels)
+    weights = [1.0 / class_counts[label] for label in labels]
+
+    sampler = WeightedRandomSampler(weights, num_samples=num_samples, replacement=True)
+
+    loader = DataLoader(dataset,
+                        batch_size=batch_size,
+                        sampler=sampler,
+                        num_workers=num_workers,
+                        pin_memory=True,
+                        drop_last=True)
+    return loader
 
 

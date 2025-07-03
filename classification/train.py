@@ -10,13 +10,14 @@ from torch.optim.lr_scheduler import ReduceLROnPlateau
 from torch.utils.data import DataLoader, WeightedRandomSampler
 
 from transformations import get_train_transform, get_val_transform
-from dataset import ClassificationDataset
+from dataset import ClassificationDataset, get_contrastive_loader
 from training_utils import CustomClassifier, EncoderFactory, OptimizerFactory, LossFunctionFactory, \
     BaseEpoch, calculate_standard_metrics, calculate_confusion_matrix, build_label_encoding, set_seed
 from logger_utils import get_logger
 from sklearn.utils.class_weight import compute_class_weight
 import numpy as np
 from general_utils import parse_bracketed_arg
+from contrastive import ProjectionHead, ContrastiveTrainer
 
 OPTIMIZERS = ['adam', 'adamw', 'sgd']
 LOSSES = ['ce', 'focal']
@@ -209,14 +210,45 @@ class TrainClassificationModel:
                  'Useful for large training datasets, to speed up training.'
         )
 
-    def set_up_experiment(self):
-        #todo ver como gestiono lo de la softmax
+        self.add_argument(
+            '--contrastive-pretrain',
+            action='store_true',
+            help='Pretains the model using contrastive learning before fine-tuning for classification.')
+
+    def contrastive_pretrain(self, encoder, dataloader, device, epochs=30):
+        import torch.optim as optim
+        encoder.to(device)
+        encoder.classifier = torch.nn.Identity()
+        projection_head = ProjectionHead(in_dim=1280).to(device) # todo harcodeado para efficentnet_b0
+        optimizer = optim.Adam(list(encoder.parameters()) + list(projection_head.parameters()), lr=3e-4) #todo pueden ser otros valores?? otro optimizador?
+
+        print("Starting contrastive pretraining...")
+        trainer = ContrastiveTrainer(encoder, dataloader, projection_head, optimizer, device)
+        trainer.train(epochs=epochs)
+        torch.save(encoder.state_dict(), "encoder_contrastive.pth")
+
+    def set_up_experiment(self, train_dataset):
         try:
             encoder = EncoderFactory().get_encoder(self.args.encoder_name, pretrained=self.args.pretrained) #todo lo de pretained tiene que ser opcional
-            model = CustomClassifier(encoder=encoder, num_classes=self.args.num_classes, dropout_rate=self.args.dropout_rate)
+        except Exception as error:
+            print(f"Something failed creating the encoder: {error}")
+            return False
+
+        if self.args.contrastive_pretrain:
+            device = torch.device("cuda") if torch.cuda.is_available() else "cpu"
+            contrastive_loader = get_contrastive_loader(train_dataset, batch_size=64, num_workers=self.args.max_workers, augment=True)
+            self.contrastive_pretrain(encoder, contrastive_loader, device, epochs=30) #todo cosas harcodeadas
+        #Carga pesos preentrenados si existen
+        if os.path.exists("encoder_contrastive.pth"):
+            encoder.load_state_dict(torch.load("encoder_contrastive.pth"))
+
+        try:
+            model = CustomClassifier(encoder=encoder, num_classes=self.args.num_classes,
+                                     dropout_rate=self.args.dropout_rate)
         except Exception as error:
             print(f"Something failed creating the model: {error}")
             return False
+
         try:
             optimizer = OptimizerFactory().get_optimizer(optimizer_name=self.args.optimizer, model_params=model.parameters(),
                                                          initial_lr=self.args.initial_lr)
@@ -336,7 +368,7 @@ class TrainClassificationModel:
                                  num_workers=self.args.max_workers,
                                  drop_last=True)
 
-        return train_loader, val_loader, test_loader
+        return train_loader, val_loader, test_loader, train_dataset
 
     def train_classification_model(self):
         def _display_metrics(metrics, split: str = "train"):
@@ -375,12 +407,13 @@ class TrainClassificationModel:
 
         # For reproducibility
         set_seed(self.args.seed)
-        model, optimizer, loss_function, scheduler = self.set_up_experiment()
+        train_loader, val_loader, test_loader, train_dataset = self.set_up_dataset_loader()
+        model, optimizer, loss_function, scheduler = self.set_up_experiment(train_dataset)
         device = torch.device("cuda") if torch.cuda.is_available() else "cpu"
         model = model.to(device)
         print(f"The model will be trained on {device}.")
 
-        train_loader, val_loader, test_loader = self.set_up_dataset_loader()
+
 
 
         train_epoch = BaseEpoch(model, loss_function, device, optimizer)
