@@ -218,8 +218,9 @@ class TrainClassificationModel:
     def contrastive_pretrain(self, encoder, dataloader, device, epochs=30):
         import torch.optim as optim
         encoder.to(device)
-        encoder.classifier = torch.nn.Identity()
-        projection_head = ProjectionHead(in_dim=1280).to(device) # todo harcodeado para efficentnet_b0
+        in_dim=encoder.fc.in_features
+        encoder.fc = torch.nn.Identity()
+        projection_head = ProjectionHead(in_dim=in_dim).to(device) # todo harcodeado para resnet
         optimizer = optim.Adam(list(encoder.parameters()) + list(projection_head.parameters()), lr=3e-4) #todo pueden ser otros valores?? otro optimizador?
 
         print("Starting contrastive pretraining...")
