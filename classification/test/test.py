@@ -41,8 +41,8 @@ def get_model():
 def main():
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-    train_dataset = BinaryImageDataset("train.csv")
-    val_dataset = BinaryImageDataset("val.csv")
+    train_dataset = BinaryImageDataset("/nas/data/oct/train.csv")
+    val_dataset = BinaryImageDataset("/nas/data/oct/val.csv")
 
     train_loader = DataLoader(train_dataset, batch_size=32, shuffle=True)
     val_loader = DataLoader(val_dataset, batch_size=32)
