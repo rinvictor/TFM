@@ -331,7 +331,7 @@ class TrainClassificationModel:
                                 num_workers=self.args.max_workers,
                                 drop_last=True)
         test_loader = DataLoader(dataset=test_dataset,
-                                 batch_size=self.args.batch_size,
+                                 batch_size=1,
                                  shuffle=False,
                                  num_workers=self.args.max_workers,
                                  drop_last=True)
