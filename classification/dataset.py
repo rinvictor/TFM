@@ -13,6 +13,8 @@ class ClassificationDataset(Dataset):
     def __getitem__(self, index):
         img_path, label = self.samples[index]
         image = cv2.imread(img_path)
+        if image is None:
+            raise FileNotFoundError(f"Could not read image: {img_path}")
         image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
         image = Image.fromarray(image)
         if self.transform:

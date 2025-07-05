@@ -107,6 +107,12 @@ class EncoderFactory:
             return _get_efficientnet_b0(pretrained=pretrained)
         elif encoder_name == "efficientnet-b1":
             return _get_efficientnet_b1(pretrained=pretrained)
+        elif encoder_name == "efficientnet-b2":
+            return _get_efficientnet_b2(pretrained=pretrained)
+        elif encoder_name == "efficientnet-b3":
+            return _get_efficientnet_b3(pretrained=pretrained)
+        elif encoder_name == "efficientnet-b4":
+            return _get_efficientnet_b4(pretrained=pretrained)
         elif encoder_name == "mobilenet-v2":
             return _get_mobilenet_v2(pretrained=pretrained)
         else:
@@ -134,6 +140,21 @@ def _get_efficientnet_b0(pretrained):
 
 def _get_efficientnet_b1(pretrained):
     encoder = models.efficientnet_b1(weights=models.EfficientNet_B1_Weights.IMAGENET1K_V1 if pretrained == 'imagenet' else None)
+    # encoder.classifier = nn.Identity()
+    return encoder
+
+def _get_efficientnet_b2(pretrained):
+    encoder = models.efficientnet_b2(weights=models.EfficientNet_B2_Weights.IMAGENET1K_V1 if pretrained == 'imagenet' else None)
+    # encoder.classifier = nn.Identity()
+    return encoder
+
+def _get_efficientnet_b3(pretrained):
+    encoder = models.efficientnet_b3(weights=models.EfficientNet_B3_Weights.IMAGENET1K_V1 if pretrained == 'imagenet' else None)
+    # encoder.classifier = nn.Identity()
+    return encoder
+
+def _get_efficientnet_b4(pretrained):
+    encoder = models.efficientnet_b4(weights=models.EfficientNet_B4_Weights.IMAGENET1K_V1 if pretrained == 'imagenet' else None)
     # encoder.classifier = nn.Identity()
     return encoder
 
