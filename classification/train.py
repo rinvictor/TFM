@@ -93,7 +93,6 @@ class TrainClassificationModel:
             "--optimizer",
             type=str,
             required=True,
-            choices=OPTIMIZERS,
             help=f"Optimizer to use. Allowed values: {' ,'.join(OPTIMIZERS)}",
         )
         self.add_argument(
@@ -225,7 +224,7 @@ class TrainClassificationModel:
             return False
         try:
             optimizer_name, optimizer_config = parse_bracketed_arg(self.args.optimizer)
-            optimizer = OptimizerFactory().get_optimizer(optimizer_name=self.args.optimizer, model_params=model.parameters(),
+            optimizer = OptimizerFactory().get_optimizer(optimizer_name=optimizer_name, model_params=model.parameters(),
                                                          initial_lr=self.args.initial_lr, **optimizer_config)
         except Exception as error:
             print(f"Something failed setting the optimizer up: {error}")
