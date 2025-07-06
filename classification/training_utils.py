@@ -4,6 +4,7 @@ from torch.nn import CrossEntropyLoss
 import torch
 from tqdm import tqdm
 from segmentation_models_pytorch.losses import FocalLoss
+import numpy as np
 
 class OptimizerFactory:
     def get_optimizer(self, optimizer_name: str, model_params, initial_lr, **config):
@@ -31,6 +32,10 @@ class LossFunctionFactory:
         if loss_name == "ce":
             return _get_ce(**kwargs)
         elif loss_name == 'focal':
+            if 'weight' in kwargs:
+                del kwargs['weight']  # Focal loss does not support weight
+            return _get_focal(**kwargs)
+        elif loss_name == 'balanced_focal':
             if 'weight' in kwargs:
                 del kwargs['weight']  # Focal loss does not support weight
             return _get_focal(**kwargs)

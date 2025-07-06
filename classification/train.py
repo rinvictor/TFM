@@ -38,6 +38,7 @@ class TrainClassificationModel:
         self.class_weights = None
         self.early_stopping_patience = self.args.early_stopping_patience
         self.epochs_without_improvement = 0
+        self.train_labels = None
 
     def add_argument(self, *args, **kw):
         if isinstance(args, tuple):
@@ -223,8 +224,9 @@ class TrainClassificationModel:
             print(f"Something failed creating the model: {error}")
             return False
         try:
+            optimizer_name, optimizer_config = parse_bracketed_arg(self.args.optimizer)
             optimizer = OptimizerFactory().get_optimizer(optimizer_name=self.args.optimizer, model_params=model.parameters(),
-                                                         initial_lr=self.args.initial_lr)
+                                                         initial_lr=self.args.initial_lr, **optimizer_config)
         except Exception as error:
             print(f"Something failed setting the optimizer up: {error}")
             return False
@@ -232,6 +234,27 @@ class TrainClassificationModel:
         try:
             loss_name, loss_config = parse_bracketed_arg(self.args.loss_function)
             print(f"Using loss function: {loss_name} with config: {loss_config}")
+
+            # todo
+            # if loss_name == "balanced_focal":
+            #     def get_cb_weights(train_labels, num_classes):
+            #         total_samples = len(train_labels)
+            #         if total_samples < 1000:
+            #             beta = 0.9
+            #         elif total_samples < 10000:
+            #             beta = 0.99
+            #         elif total_samples < 100000:
+            #             beta = 0.999
+            #         else:
+            #             beta = 0.9999
+            #         counts = np.bincount(train_labels, minlength=num_classes)
+            #         cb_w = (1 - beta) / (1 - np.power(beta, counts))
+            #         cb_w = cb_w / cb_w.sum()  # Opcional: normalizar a suma 1
+            #         return torch.tensor(cb_w, dtype=torch.float32)
+            #
+            #     cb_weights = get_cb_weights(self.train_labels, self.args.num_classes)
+            #     loss_config['alpha'] = cb_weights
+
             loss_function = LossFunctionFactory().get_loss_function(loss_name, weight=self.class_weights, **loss_config)
         except Exception as error:
             print(f"Something failed getting the loss function: {error}")
@@ -251,6 +274,7 @@ class TrainClassificationModel:
 
     def set_up_dataset_loader(self):
         df_train = pd.read_csv(os.path.join(self.args.dataset_path, 'train.csv'))
+        self.train_labels = df_train['label'].to_numpy()
         if self.args.dataset_downsampling_fraction is not None:
             original_size = len(df_train)
             df_train_downsampled = df_train.groupby('label', group_keys=False).apply(
@@ -380,12 +404,13 @@ class TrainClassificationModel:
 
         # For reproducibility
         set_seed(self.args.seed)
+        train_loader, val_loader, test_loader = self.set_up_dataset_loader()
         model, optimizer, loss_function, scheduler = self.set_up_experiment()
         device = torch.device("cuda") if torch.cuda.is_available() else "cpu"
         model = model.to(device)
         print(f"The model will be trained on {device}.")
 
-        train_loader, val_loader, test_loader = self.set_up_dataset_loader()
+
 
 
         train_epoch = BaseEpoch(model, loss_function, device, optimizer)
