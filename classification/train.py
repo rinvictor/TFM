@@ -11,12 +11,13 @@ from torch.utils.data import DataLoader, WeightedRandomSampler
 
 from transformations import get_train_transform, get_val_transform
 from dataset import ClassificationDataset
-from training_utils import CustomClassifier, EncoderFactory, OptimizerFactory, LossFunctionFactory, \
-    BaseEpoch, calculate_standard_metrics, calculate_confusion_matrix, build_label_encoding, set_seed
+from training_utils import OptimizerFactory, LossFunctionFactory, \
+    BaseEpoch, calculate_standard_metrics, calculate_confusion_matrix
 from logger_utils import get_logger
 from sklearn.utils.class_weight import compute_class_weight
 import numpy as np
-from general_utils import parse_bracketed_arg
+from general_utils import parse_bracketed_arg,build_label_encoding, set_seed
+from models import get_model
 
 OPTIMIZERS = ['adam', 'adamw', 'sgd']
 LOSSES = ['ce', 'focal']
@@ -212,8 +213,12 @@ class TrainClassificationModel:
     def set_up_experiment(self):
         #todo ver como gestiono lo de la softmax
         try:
-            encoder = EncoderFactory().get_encoder(self.args.encoder_name, pretrained=self.args.pretrained) #todo lo de pretained tiene que ser opcional
-            model = CustomClassifier(encoder=encoder, num_classes=self.args.num_classes, dropout_rate=self.args.dropout_rate)
+            #encoder = EncoderFactory().get_encoder(self.args.encoder_name, pretrained=self.args.pretrained) #todo lo de pretained tiene que ser opcional
+            #model = CustomClassifier(encoder=encoder, num_classes=self.args.num_classes, dropout_rate=self.args.dropout_rate)
+            model = get_model(model_name=self.args.encoder_name,
+                              num_classes=self.args.num_classes,
+                              pretrained=self.args.pretrained,
+                              dropout_rate=self.args.dropout_rate)
         except Exception as error:
             print(f"Something failed creating the model: {error}")
             return False

@@ -1,4 +1,7 @@
 import re
+import numpy as np
+import torch
+import random
 
 def parse_bracketed_arg(arg_str):
     """
@@ -25,3 +28,16 @@ def parse_bracketed_arg(arg_str):
                 kwargs[key] = val
 
     return name, kwargs
+
+def build_label_encoding(labels):
+    unique_classes = sorted(set(labels))
+    return {cls_name: idx for idx, cls_name in enumerate(unique_classes)}
+
+def set_seed(seed):
+    """Set the random seed for reproducibility."""
+    torch.manual_seed(seed)
+    torch.cuda.manual_seed_all(seed)
+    np.random.seed(seed)
+    random.seed(seed)
+    torch.backends.cudnn.deterministic = True
+    torch.backends.cudnn.benchmark = False
