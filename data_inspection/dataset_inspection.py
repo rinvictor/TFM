@@ -4,6 +4,7 @@ import matplotlib.pyplot as plt
 import os
 
 from PIL import Image
+from tqdm import tqdm
 
 
 def text_inspection(data_csv):
@@ -144,11 +145,120 @@ def image_size_inspection(dataset_path, output_dir):
     os.makedirs(plot_dir, exist_ok=True)
     plt.savefig(os.path.join(plot_dir, 'size_histogram.png'))
 
-def main():
-    input_dir = '../data/isic/prepared'
-    clean_and_save_data(data_csv = os.path.join(input_dir, 'raw_data.csv'), output_dir = os.path.join(input_dir, 'metadata'))
-    image_size_inspection(dataset_path = os.path.join(input_dir, 'raw_images'), output_dir = os.path.join(input_dir, 'metadata'))
 
+def extract_image_sizes(df, path_column='image_path'):
+    """
+    Añade columnas 'width' y 'height' al DataFrame con las dimensiones de cada imagen.
+    """
+    widths, heights = [], []
+
+    for path in tqdm(df[path_column], desc='Extrayendo tamaños'):
+        try:
+            with Image.open(path) as img:
+                width, height = img.size
+                widths.append(width)
+                heights.append(height)
+        except Exception as e:
+            print(f"Error al procesar {path}: {e}")
+            widths.append(None)
+            heights.append(None)
+
+    df['width'] = widths
+    df['height'] = heights
+    return df
+
+def summarize_sizes_by_class(df, label_column='ylabel'):
+    """
+    Agrupa por clase y muestra estadísticas descriptivas de ancho y alto,
+    incluyendo el valor más común (moda) de cada dimensión.
+    """
+    import scipy.stats as stats
+
+    # Agrupamos las estadísticas básicas
+    summary = df.groupby(label_column)[['width', 'height']].agg(['mean', 'std', 'min', 'max']).round(2)
+
+    # Calculamos la moda (el valor más común) por clase
+    width_mode = df.groupby(label_column)['width'].agg(lambda x: x.mode().iloc[0] if not x.mode().empty else None)
+    height_mode = df.groupby(label_column)['height'].agg(lambda x: x.mode().iloc[0] if not x.mode().empty else None)
+
+    # Añadimos las modas al DataFrame de resumen
+    summary[('width', 'mode')] = width_mode
+    summary[('height', 'mode')] = height_mode
+
+    # Reordenamos columnas para mayor claridad
+    summary = summary.reindex(columns=[
+        ('width', 'mean'), ('width', 'std'), ('width', 'min'), ('width', 'max'), ('width', 'mode'),
+        ('height', 'mean'), ('height', 'std'), ('height', 'min'), ('height', 'max'), ('height', 'mode'),
+    ])
+
+    # Ordenar columnas jerárquicas
+    summary.columns = pd.MultiIndex.from_tuples(summary.columns)
+
+    return summary.round(2)
+
+
+def plot_image_sizes_by_class(df, label_column='label'):
+    """
+    Muestra boxplots del ancho y alto de las imágenes por clase.
+    """
+    plt.figure(figsize=(14, 6))
+
+    # Ancho
+    plt.subplot(1, 2, 1)
+    sns.boxplot(x=label_column, y='width', data=df)
+    plt.title('Distribución del ancho por clase')
+    plt.xticks(rotation=45)
+    plt.grid(True)
+
+    # Alto
+    plt.subplot(1, 2, 2)
+    sns.boxplot(x=label_column, y='height', data=df)
+    plt.title('Distribución del alto por clase')
+    plt.xticks(rotation=45)
+    plt.grid(True)
+
+    plt.tight_layout()
+    plt.show()
+
+def plot_histograms_by_class(df, label_column='label'):
+    """
+    Muestra histogramas facetados de width y height por clase.
+    """
+    g = sns.FacetGrid(df, col=label_column, col_wrap=3, sharex=False, sharey=False, height=4)
+    g.map(sns.histplot, 'width', kde=False, bins=20, color='skyblue')
+    g.fig.suptitle('Histograma de ancho por clase', y=1.05)
+    plt.show()
+
+    g = sns.FacetGrid(df, col=label_column, col_wrap=3, sharex=False, sharey=False, height=4)
+    g.map(sns.histplot, 'height', kde=False, bins=20, color='salmon')
+    g.fig.suptitle('Histograma de alto por clase', y=1.05)
+    plt.show()
+
+def plot_width_histogram_with_mode(df, label_column='label'):
+    modes = df.groupby(label_column)['width'].agg(lambda x: x.mode().iloc[0] if not x.mode().empty else None)
+
+    g = sns.FacetGrid(df, col=label_column, col_wrap=3, sharex=False, height=4)
+    g.map(sns.histplot, 'width', bins=20, color='skyblue')
+
+    for ax, (label, mode_val) in zip(g.axes.flat, modes.items()):
+        ax.axvline(mode_val, color='red', linestyle='--', label=f'Moda: {mode_val}')
+        ax.legend()
+
+    g.fig.suptitle('Histograma de ancho por clase (con moda)', y=1.05)
+    plt.show()
+
+def main():
+    # input_dir = '../data/isic/prepared'
+    # clean_and_save_data(data_csv = os.path.join(input_dir, 'raw_data.csv'), output_dir = os.path.join(input_dir, 'metadata'))
+    # image_size_inspection(dataset_path = os.path.join(input_dir, 'raw_images'), output_dir = os.path.join(input_dir, 'metadata'))
+    train_original_csv_path = '/nas/data/isic/original/train.csv'
+    df = pd.read_csv(train_original_csv_path)
+    df = extract_image_sizes(df, path_column='image_path')
+    stats_by_class = summarize_sizes_by_class(df, label_column='label')
+    print(stats_by_class)
+    plot_image_sizes_by_class(df)
+    plot_histograms_by_class(df)
+    plot_width_histogram_with_mode(df)
 
 if __name__ == '__main__':
     main()
