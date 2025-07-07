@@ -2,8 +2,16 @@ from torchvision import transforms
 import random
 import numpy as np
 from PIL import Image
+import os
 
-def get_train_transform(image_size=(224, 224)):
+def load_mean_std(file_path):
+    with open(file_path, "r") as f:
+        lines = f.readlines()
+    mean = eval(lines[0].strip())
+    std = eval(lines[1].strip())
+    return mean, std
+
+def get_train_transform(image_size=(224, 224), dataset_path=None):
     # return transforms.Compose([
     #     transforms.RandomAffine(
     #         degrees=30,
@@ -45,6 +53,7 @@ def get_train_transform(image_size=(224, 224)):
     #                           std=[0.229, 0.224, 0.225]),
     #     A.ToTensorV2(),  # Convierte a tensor de PyTorch
     # ])
+    mean, std = load_mean_std(os.path.join(dataset_path, "mean_std.txt"))
     return transforms.Compose([
         transforms.RandomHorizontalFlip(p=0.5),
         transforms.RandomVerticalFlip(p=0.5),
@@ -61,20 +70,23 @@ def get_train_transform(image_size=(224, 224)):
         transforms.Resize((256)),  # Resize fijo 256x256
         transforms.CenterCrop(image_size),  # Crop central 224x224 (ajusta según image_size)
         transforms.ToTensor(),
-        transforms.Normalize(mean=[0.485, 0.456, 0.406],
-                             std=[0.229, 0.224, 0.225]),
+        # transforms.Normalize(mean=[0.485, 0.456, 0.406],
+        #                      std=[0.229, 0.224, 0.225]),
+        transforms.Normalize(mean=mean, std=std),
 
         transforms.RandomErasing(p=0.3),  # Equivalente aproximado a CoarseDropout
     ])
 
 
-def get_val_transform(image_size=(224, 224)): #Si uso 512x512, el resize deberia ser de 576, recvisar si son cuadradas
+def get_val_transform(image_size=(224, 224), dataset_path=None): #Si uso 512x512, el resize deberia ser de 576, recvisar si son cuadradas
+    mean, std = load_mean_std(os.path.join(dataset_path, "mean_std.txt"))
     return transforms.Compose([
         transforms.Resize(256),
         transforms.CenterCrop(image_size),
         transforms.ToTensor(),
-        transforms.Normalize(mean=[0.485, 0.456, 0.406],
-                             std=[0.229, 0.224, 0.225]),
+        # transforms.Normalize(mean=[0.485, 0.456, 0.406],
+        #                      std=[0.229, 0.224, 0.225]),
+        transforms.Normalize(mean=mean, std=std),
     ])
 
 
