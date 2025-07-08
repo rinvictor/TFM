@@ -21,7 +21,6 @@ from models import get_model
 
 OPTIMIZERS = ['adam', 'adamw', 'sgd']
 LOSSES = ['ce', 'focal']
-METRICS = ['f1', 'accuracy', 'precision', 'recall']
 
 
 class TrainClassificationModel:
@@ -144,8 +143,7 @@ class TrainClassificationModel:
             type=str,
             required=False,
             default="f1",
-            choices=METRICS,
-            help="Metric to select the best model during training",
+            help="Metric to select the best model during training. f1 is the default. ",
         )
 
         self.add_argument(
@@ -208,6 +206,17 @@ class TrainClassificationModel:
             default=None,
             help='If set, the train dataset will be downsampled to this fraction. '
                  'Useful for large training datasets, to speed up training.'
+        )
+
+        self.add_argument(
+            '--mean-std-normalization',
+            type=str,
+            required=False,
+            default='imagenet',
+            choices=['imagenet', 'precalculated'],
+            help='If set to "imagenet", uses ImageNet mean and std for normalization. '
+                 'If set to "precalculated", uses pre-calculated mean and std from the dataset. This requires a mean_std.txt '
+                 'file with the mean and std values in the dataset path.',
         )
 
     def set_up_experiment(self):
@@ -333,17 +342,17 @@ class TrainClassificationModel:
 
         train_dataset = ClassificationDataset(
             images_with_labels = train_images_with_labels,
-            transform = get_train_transform(dataset_path=self.args.dataset_path),
+            transform = get_train_transform(dataset_path=self.args.dataset_path if self.args.mean_std_normalization == 'precalculated' else None),
             label_encoding = class_to_idx_train,
         )
         val_dataset = ClassificationDataset(
             images_with_labels = val_images_with_labels,
-            transform = get_val_transform(dataset_path=self.args.dataset_path),
+            transform = get_val_transform(dataset_path=self.args.dataset_path if self.args.mean_std_normalization == 'precalculated' else None),
             label_encoding = class_to_idx_val,
         )
         test_dataset = ClassificationDataset(
             images_with_labels = test_images_with_labels,
-            transform = get_val_transform(dataset_path=self.args.dataset_path),
+            transform = get_val_transform(dataset_path=self.args.dataset_path if self.args.mean_std_normalization == 'precalculated' else None),
             label_encoding = class_to_idx_test,
         )
 
@@ -436,6 +445,12 @@ class TrainClassificationModel:
                 "test_transforms": _transform_to_str(test_loader.dataset.transform),
                 "use_weighted_sampling": self.args.use_weighted_sampling,
                 "dataset_downsampling_fraction": self.args.dataset_downsampling_fraction,
+                "max_workers": self.args.max_workers,
+                "use_class_weights": self.args.use_class_weights,
+                "seed": self.args.seed,
+                "dropout_rate": self.args.dropout_rate,
+                "early_stopping_patience": self.early_stopping_patience,
+                "mean_std_normalization": self.args.mean_std_normalization,
             }
         logger = get_logger(
             logger_name=self.args.logger,
@@ -490,8 +505,9 @@ class TrainClassificationModel:
                 metrics_to_log.update({f"val_{k}": v for k, v in val_metrics_per_class.items() if k != "accuracy"})
                 run_logger.log_metrics(metrics_to_log, step=epoch)
 
-                if val_metrics[metric_for_best_model] > self.best_model_metric:
-                    self.best_model_metric = val_metrics[metric_for_best_model]
+                all_metrics = val_metrics_per_class | val_metrics
+                if all_metrics[metric_for_best_model] > self.best_model_metric:
+                    self.best_model_metric = all_metrics[metric_for_best_model]
                     self.epochs_without_improvement = 0
                     self.best_model = model
                     run_logger.log_model(

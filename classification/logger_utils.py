@@ -111,13 +111,19 @@ class WandbLogger(BaseLogger):
         artifact = wandb.Artifact(name=model_name, type="model")
 
         if model_path and epoch is not None:
-            epoch_path = os.path.join(model_path, f"{model_name}_epoch_{epoch}.pth")
-            dir_path = os.path.dirname(epoch_path)
+            state_dict_path = os.path.join(model_path, f"{model_name}_epoch_{epoch}_state_dict.pth")
+            dir_path = os.path.dirname(state_dict_path)
             if dir_path:
                 os.makedirs(dir_path, exist_ok=True)
-            torch.save(model.state_dict(), epoch_path)
-            artifact.add_file(epoch_path)
-            print(f"Model locally saved in: {epoch_path}")
+            torch.save(model.state_dict(), state_dict_path)
+            artifact.add_file(state_dict_path)
+
+            full_model_path = os.path.join(dir_path, f"{model_name}_epoch_{epoch}_full_model.pth")
+            torch.save(model, full_model_path)
+            artifact.add_file(full_model_path)
+            print(f"Model locally saved in: {state_dict_path}")
+
+            os.remove(full_model_path)
         else:  # If no path is provided, save to a temporary location
             tmp_path = f"/tmp/{model_name}.pth"
             torch.save(model.state_dict(), tmp_path)
