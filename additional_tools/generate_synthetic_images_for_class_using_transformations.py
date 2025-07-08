@@ -117,10 +117,10 @@ benign     4059.19  2113.53  640  6000  6000  2689.69  1441.00  480  6000  4000
 malignant  2791.26  1529.50  640  6000  1872  1943.69  1060.01  480  4288  1053
     """
     images_path = '/nas/data/isic/raw_images'
-    output_path = '/nas/data/isic/synthetic_images_randomized_v2'
+    output_path = '/nas/data/isic/synthetic_images_randomized_v3'
     train_original_csv_path = '/nas/data/isic/original/train.csv'
     objective_class = 'malignant'
-    num_augmentations_per_image = 10
+    num_augmentations_per_image = 20
     df = pd.read_csv(train_original_csv_path)
     images_to_transform = df[df['label'] == objective_class]['image_path'].tolist()
 

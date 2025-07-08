@@ -53,7 +53,11 @@ def get_train_transform(image_size=(224, 224), dataset_path=None):
     #                           std=[0.229, 0.224, 0.225]),
     #     A.ToTensorV2(),  # Convierte a tensor de PyTorch
     # ])
-    mean, std = load_mean_std(os.path.join(dataset_path, "mean_std.txt"))
+    if dataset_path is not None:
+        mean, std = load_mean_std(os.path.join(dataset_path, "mean_std.txt"))
+    else: # imagenet default values
+        mean = [0.485, 0.456, 0.406]
+        std = [0.229, 0.224, 0.225]
     return transforms.Compose([
         transforms.RandomHorizontalFlip(p=0.5),
         transforms.RandomVerticalFlip(p=0.5),
@@ -79,7 +83,11 @@ def get_train_transform(image_size=(224, 224), dataset_path=None):
 
 
 def get_val_transform(image_size=(224, 224), dataset_path=None): #Si uso 512x512, el resize deberia ser de 576, recvisar si son cuadradas
-    mean, std = load_mean_std(os.path.join(dataset_path, "mean_std.txt"))
+    if dataset_path is not None:
+        mean, std = load_mean_std(os.path.join(dataset_path, "mean_std.txt"))
+    else:  # imagenet default values
+        mean = [0.485, 0.456, 0.406]
+        std = [0.229, 0.224, 0.225]
     return transforms.Compose([
         transforms.Resize(256),
         transforms.CenterCrop(image_size),
