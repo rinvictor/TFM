@@ -333,17 +333,17 @@ class TrainClassificationModel:
 
         train_dataset = ClassificationDataset(
             images_with_labels = train_images_with_labels,
-            transform = get_train_transform(),
+            transform = get_train_transform(dataset_path=self.args.dataset_path),
             label_encoding = class_to_idx_train,
         )
         val_dataset = ClassificationDataset(
             images_with_labels = val_images_with_labels,
-            transform = get_val_transform(),
+            transform = get_val_transform(dataset_path=self.args.dataset_path),
             label_encoding = class_to_idx_val,
         )
         test_dataset = ClassificationDataset(
             images_with_labels = test_images_with_labels,
-            transform = get_val_transform(),
+            transform = get_val_transform(dataset_path=self.args.dataset_path),
             label_encoding = class_to_idx_test,
         )
 
