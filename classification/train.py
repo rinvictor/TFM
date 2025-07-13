@@ -617,7 +617,7 @@ class TrainClassificationModel:
                     "val_recall_global": val_metrics["recall"],
                     "train_loss": train_loss,
                     "val_loss": val_loss,
-                    "learning_rate": current_learning_rate,
+                    "learning_rate": current_learning_rate if not self.args.use_separate_lr_for_backbone_and_head else None,
                     "head_learning_rate": optimizer.param_groups[1]["lr"] if self.args.use_separate_lr_for_backbone_and_head else None,
                     "backbone_learning_rate": optimizer.param_groups[0]["lr"] if self.args.use_separate_lr_for_backbone_and_head else None,
                 }
