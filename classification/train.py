@@ -218,6 +218,27 @@ class TrainClassificationModel:
                  'If set to "precalculated", uses pre-calculated mean and std from the dataset. This requires a mean_std.txt '
                  'file with the mean and std values in the dataset path.',
         )
+        self.add_argument(
+            '--backbone-lr',
+            type=float,
+            required=False,
+            default=None,
+            help='Learning rate for the backbone of the model. If not set, the optimizer will use the initial_lr.',
+        )
+        self.add_argument(
+            '--backbone-weight-decay',
+            type=float,
+            required=False,
+            default=None,
+            help='Weight decay for the backbone of the model. If not set, the optimizer will use the default value.',
+        )
+        self.add_argument(
+            '--head-lr',
+            type=float,
+            required=False,
+            default=None,
+            help='Learning rate for the head of the model. If not set, the optimizer will use the initial_lr.',
+        )
 
     def set_up_experiment(self):
         #todo ver como gestiono lo de la softmax
@@ -228,13 +249,33 @@ class TrainClassificationModel:
                               num_classes=self.args.num_classes,
                               pretrained=self.args.pretrained,
                               dropout_rate=self.args.dropout_rate)
+            head_params = model.head.parameters()
+            backbone_params = [p for n, p in model.named_parameters() if 'head' not in n]
         except Exception as error:
             print(f"Something failed creating the model: {error}")
             return False
         try:
-            optimizer_name, optimizer_config = parse_bracketed_arg(self.args.optimizer)
-            optimizer = OptimizerFactory().get_optimizer(optimizer_name=optimizer_name, model_params=model.parameters(),
-                                                         initial_lr=self.args.initial_lr, **optimizer_config)
+            # optimizer_name, optimizer_config = parse_bracketed_arg(self.args.optimizer)
+            # optimizer = OptimizerFactory().get_optimizer(optimizer_name=optimizer_name,
+            #                                              model_params=model.parameters(),
+            #                                              initial_lr=self.args.initial_lr,
+            #                                              **optimizer_config)
+            if self.args.backbone_lr is not None and self.args.backbone_weight_decay is not None and self.args.head_lr is not None:
+                # optimizer = torch.optim.AdamW([
+                #     {"params": backbone_params, "lr": 1e-6, "weight_decay": 1e-2},
+                #     {"params": head_params, "lr": 2e-4, "weight_decay": 0.0}
+                # ])
+                optimizer = torch.optim.AdamW([
+                    {"params": backbone_params, "lr": self.args.backbone_lr, "weight_decay": self.args.backbone_weight_decay},
+                    {"params": head_params, "lr": self.args.head_lr, "weight_decay": 0.0}
+                ])
+            else:
+                optimizer_name, optimizer_config = parse_bracketed_arg(self.args.optimizer)
+                optimizer = OptimizerFactory().get_optimizer(optimizer_name=optimizer_name,
+                                                             model_params=model.parameters(),
+                                                             initial_lr=self.args.initial_lr,
+                                                             **optimizer_config)
+
         except Exception as error:
             print(f"Something failed setting the optimizer up: {error}")
             return False
