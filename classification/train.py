@@ -38,6 +38,12 @@ class TrainClassificationModel:
         self.early_stopping_patience = self.args.early_stopping_patience
         self.epochs_without_improvement = 0
         self.train_labels = None
+        self.best_head_loss = -float("inf")
+        self.best_backbone_loss = -float("inf")
+        self.no_improve_epochs_head = 0
+        self.no_improve_epochs_backbone = 0
+        self.head_lr = self.args.head_lr
+        self.backbone_lr = self.args.backbone_lr
 
     def add_argument(self, *args, **kw):
         if isinstance(args, tuple):
@@ -238,6 +244,40 @@ class TrainClassificationModel:
             required=False,
             default=None,
             help='Learning rate for the head of the model. If not set, the optimizer will use the initial_lr.',
+        )
+        self.add_argument(
+            '--use-separate-lr-for-backbone-and-head',
+            action='store_true',
+            help='If set, uses separate learning rates for the backbone and head of the model. '
+                 'The backbone_lr and head_lr arguments must be set.',
+        )
+        self.add_argument(
+            '--head-lr-patience',
+            type=int,
+            required=False,
+            default=5,
+            help='Number of epochs to wait for improvement in the head loss before reducing the head learning rate.',
+        )
+        self.add_argument(
+            '--head-lr-factor',
+            type=float,
+            required=False,
+            default=0.1,
+            help='Factor by which to reduce the head learning rate when there is no improvement in the head loss.',
+        )
+        self.add_argument(
+            '--backbone-lr-patience',
+            type=int,
+            required=False,
+            default=5,
+            help='Number of epochs to wait for improvement in the backbone loss before reducing the backbone learning rate.',
+        )
+        self.add_argument(
+            '--backbone-lr-factor',
+            type=float,
+            required=False,
+            default=0.1,
+            help='Factor by which to reduce the backbone learning rate when there is no improvement in the backbone loss.',
         )
 
     def set_up_experiment(self):
@@ -492,6 +532,14 @@ class TrainClassificationModel:
                 "dropout_rate": self.args.dropout_rate,
                 "early_stopping_patience": self.early_stopping_patience,
                 "mean_std_normalization": self.args.mean_std_normalization,
+                "backbone_lr": self.args.backbone_lr,
+                "backbone_weight_decay": self.args.backbone_weight_decay,
+                "head_lr": self.args.head_lr,
+                "use_separate_lr_for_backbone_and_head": self.args.use_separate_lr_for_backbone_and_head,
+                "head_lr_patience": self.args.head_lr_patience,
+                "head_lr_factor": self.args.head_lr_factor,
+                "backbone_lr_patience": self.args.backbone_lr_patience,
+                "backbone_lr_factor": self.args.backbone_lr_factor,
             }
         logger = get_logger(
             logger_name=self.args.logger,
@@ -525,9 +573,38 @@ class TrainClassificationModel:
                 _display_metrics(val_metrics, split="val")
                 _display_metrics_per_class(val_metrics_per_class, split="val")
 
-                scheduler.step(val_loss)
-                current_learning_rate = optimizer.param_groups[0]['lr']
-                print("Current learning rate:", current_learning_rate)
+                if not self.args.use_separate_lr_for_backbone_and_head:
+                    scheduler.step(val_loss)
+                    current_learning_rate = optimizer.param_groups[0]['lr']
+                    print("Current learning rate:", current_learning_rate)
+                else:
+                    # Separate scheduler for backbone and head
+                    if val_loss < self.best_head_loss:
+                        self.best_head_loss = val_loss
+                        self.no_improve_epochs_head = 0
+                    else:
+                        self.no_improve_epochs_head += 1
+
+                    if self.no_improve_epochs_head >= self.args.head_lr_patience:
+                        self.head_lr *= self.args.head_lr_factor
+                        optimizer.param_groups[1]["lr"] = self.head_lr
+                        self.no_improve_epochs_head = 0
+                        print(f"🔻 Head LR reducido manualmente a {self.args.head_lr:.2e}")
+
+                    # --- BACKBONE scheduler manual ---
+                    if val_loss < self.best_backbone_loss:
+                        self.best_backbone_loss = val_loss
+                        self.no_improve_epochs_backbone = 0
+                    else:
+                        self.no_improve_epochs_backbone += 1
+
+                    if self.no_improve_epochs_backbone >= self.args.backbone_lr_patience:
+                        self.backbone_lr *= self.args.backbone_lr_factor
+                        optimizer.param_groups[0]["lr"] = self.backbone_lr
+                        self.no_improve_epochs_backbone = 0
+                        print(f"🔻 Backbone LR reducido manualmente a {self.args.backbone_lr:.2e}")
+
+
 
                 metrics_to_log = {
                     "train_f1_global": train_metrics["f1"],
@@ -541,6 +618,8 @@ class TrainClassificationModel:
                     "train_loss": train_loss,
                     "val_loss": val_loss,
                     "learning_rate": current_learning_rate,
+                    "head_learning_rate": optimizer.param_groups[1]["lr"] if self.args.use_separate_lr_for_backbone_and_head else None,
+                    "backbone_learning_rate": optimizer.param_groups[0]["lr"] if self.args.use_separate_lr_for_backbone_and_head else None,
                 }
                 metrics_to_log.update({f"train_{k}": v for k, v in train_metrics_per_class.items() if k != "accuracy"})
                 metrics_to_log.update({f"val_{k}": v for k, v in val_metrics_per_class.items() if k != "accuracy"})
