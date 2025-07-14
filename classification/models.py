@@ -8,7 +8,7 @@ def get_model(model_name, num_classes, pretrained='imagenet', dropout_rate=0.0):
         "resnet", "efficientnet", "mobilenet"
     ]
     transformer_models_families = [
-        "vit", "swin"
+        "vit", "swin", "convnext", "efficientformer", "beit", "deit"
     ]
     if any(model_name.startswith(prefix) for prefix in cnn_models_families):
         return CNNModelFactory.get_model(model_name=model_name,
