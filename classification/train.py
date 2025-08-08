@@ -284,13 +284,30 @@ class TrainClassificationModel:
         #todo ver como gestiono lo de la softmax
         try:
             #encoder = EncoderFactory().get_encoder(self.args.encoder_name, pretrained=self.args.pretrained) #todo lo de pretained tiene que ser opcional
-            #model = CustomClassifier(encoder=encoder, num_classes=self.args.num_classes, dropout_rate=self.args.dropout_rate)
-            model = get_model(model_name=self.args.encoder_name,
-                              num_classes=self.args.num_classes,
-                              pretrained=self.args.pretrained,
-                              dropout_rate=self.args.dropout_rate)
-            head_params = model.head.parameters()
-            backbone_params = [p for n, p in model.named_parameters() if 'head' not in n]
+            # #model = CustomClassifier(encoder=encoder, num_classes=self.args.num_classes, dropout_rate=self.args.dropout_rate)
+            # quito el custom clasfier para pruebas
+            # model = get_model(model_name=self.args.encoder_name,
+            #                   num_classes=self.args.num_classes,
+            #                   pretrained=self.args.pretrained,
+            #                   dropout_rate=self.args.dropout_rate)
+            model = timm.create_model(
+                model_name="efficientnet_b3",
+                pretrained=True,
+                num_classes=NUM_CLASSES,
+                drop_rate=self.args.dropout_rate  # Esto aplica al dropout
+            )
+
+            # Congela todos los parámetros del modelo
+            for param in model.parameters():
+                param.requires_grad = False
+
+            # Descongela los parámetros del clasificador
+            for param in model.classifier.parameters():
+                param.requires_grad = True
+
+
+            # head_params = model.head.parameters()
+            # backbone_params = [p for n, p in model.named_parameters() if 'head' not in n]
         except Exception as error:
             print(f"Something failed creating the model: {error}")
             return False
@@ -318,7 +335,7 @@ class TrainClassificationModel:
                 #                                              initial_lr=self.args.initial_lr,
                 #                                              **optimizer_config)
                 optimizer = OptimizerFactory().get_optimizer(optimizer_name=optimizer_name,
-                                                             model_params=head_params,
+                                                             model_params=filter(lambda p: p.requires_grad, model.parameters()),
                                                              initial_lr=self.args.initial_lr,
                                                              **optimizer_config)
 
