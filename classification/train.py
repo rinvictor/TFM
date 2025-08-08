@@ -294,7 +294,7 @@ class TrainClassificationModel:
             model = timm.create_model(
                 model_name="efficientnet_b3",
                 pretrained=True,
-                num_classes=NUM_CLASSES,
+                num_classes=self.args.num_classes,
                 drop_rate=self.args.dropout_rate  # Esto aplica al dropout
             )
 
