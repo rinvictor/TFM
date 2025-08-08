@@ -290,6 +290,7 @@ class TrainClassificationModel:
             #                   num_classes=self.args.num_classes,
             #                   pretrained=self.args.pretrained,
             #                   dropout_rate=self.args.dropout_rate)
+            import timm
             model = timm.create_model(
                 model_name="efficientnet_b3",
                 pretrained=True,
