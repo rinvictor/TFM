@@ -310,9 +310,15 @@ class TrainClassificationModel:
                     {"params": head_params, "lr": self.args.head_lr, "weight_decay": 0.0}
                 ])
             else:
+                for param in backbone_params:
+                    param.requires_grad = False
                 optimizer_name, optimizer_config = parse_bracketed_arg(self.args.optimizer)
+                # optimizer = OptimizerFactory().get_optimizer(optimizer_name=optimizer_name,
+                #                                              model_params=model.parameters(),
+                #                                              initial_lr=self.args.initial_lr,
+                #                                              **optimizer_config)
                 optimizer = OptimizerFactory().get_optimizer(optimizer_name=optimizer_name,
-                                                             model_params=model.parameters(),
+                                                             model_params=head_params,
                                                              initial_lr=self.args.initial_lr,
                                                              **optimizer_config)
 
