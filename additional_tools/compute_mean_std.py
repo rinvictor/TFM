@@ -52,7 +52,11 @@ if __name__ == "__main__":
     import argparse
 
     parser = argparse.ArgumentParser()
-    parser.add_argument("--train-csv", type=str, required=True, help="Directory containing the csv where images are stored.")
+    parser.add_argument(
+        "--train-csv", type=str,
+        required=True,
+        help="Directory containing the csv where images are stored."
+    )
     args = parser.parse_args()
 
     mean, std = compute_mean_std_from_csv_parallel(args.train_csv)
